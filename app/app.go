@@ -36,9 +36,6 @@ func (a *App) handleRules(w http.ResponseWriter, r *http.Request) {
 		a.internalError(nil, "", err)
 		return
 	}
-
-	w.Write([]byte("Hello World"))
-
 }
 
 func (a *App) getRules() ([]byte, error) {
@@ -58,6 +55,8 @@ func (a *App) Run(ctx context.Context, args ...string) error {
 	port := ":8333"
 	http.HandleFunc("/", a.handleRules)
 	http.HandleFunc("/ws", a.handleWS)
+	http.HandleFunc("/ws/ui", a.handleWS)
+	http.HandleFunc("/ws/grafana-agent", a.handleWS)
 	return http.ListenAndServe(port, nil)
 }
 
@@ -73,6 +72,7 @@ func New() *App {
 				ID: 1234,
 				Selector: model.Selector{
 					labels.MustNewMatcher(labels.MatchEqual, "namespace", "dev"),
+					labels.MustNewMatcher(labels.MatchEqual, "name", "test"),
 				},
 				Action: model.ActionDrop,
 			},
