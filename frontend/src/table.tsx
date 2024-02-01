@@ -5,6 +5,8 @@ import {
   flexRender,
 } from "@tanstack/react-table";
 
+import { Table as BTable } from "react-bootstrap";
+
 export default function Table({ columns, data }) {
   // Use the useTable Hook to send the columns and data to build the table
   const table = useReactTable({
@@ -15,7 +17,7 @@ export default function Table({ columns, data }) {
 
   return (
     <div className="p-2">
-      <table>
+      <BTable striped bordered hover responsive size="sm">
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
@@ -43,24 +45,7 @@ export default function Table({ columns, data }) {
             </tr>
           ))}
         </tbody>
-        <tfoot>
-          {table.getFooterGroups().map((footerGroup) => (
-            <tr key={footerGroup.id}>
-              {footerGroup.headers.map((header) => (
-                <th key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.footer,
-                        header.getContext(),
-                      )}
-                </th>
-              ))}
-            </tr>
-          ))}
-        </tfoot>
-      </table>
-      <div className="h-4" />
+      </BTable>
     </div>
   );
 }

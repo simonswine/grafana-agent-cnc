@@ -8,6 +8,9 @@ import "./index.css";
 
 import { useReactTable, createColumnHelper } from "@tanstack/react-table";
 import Accordion from "react-bootstrap/Accordion";
+import Dropdown from "react-bootstrap/Dropdown";
+import Badge from "react-bootstrap/Badge";
+import Stack from "react-bootstrap/Stack";
 
 import { makeData, Person } from "./makeData";
 
@@ -82,37 +85,59 @@ function App() {
     rulesColumns,
   });
 
+  type Agent = {
+    Instance: string;
+    Targets: number;
+    LastUpdate: Date;
+  };
+
   type Targets = {
     Instance: string;
     Filtered: bool;
   };
 
-  const [targets, setTargets] = React.useState(() => []);
+  const [agents, setAgents] = React.useState(() => []);
 
-  const targetsColumnHelper = createColumnHelper<Target>();
+  const [labelNames, setLabelNames] = React.useState(() => new Set<string>());
+  const [labelNamesSelected, setLabelNamesSelected] = React.useState(() => [
+    "__container_id__",
+  ]);
 
-  const targetsColumns = [
-    rulesColumnHelper.accessor("ID", {
-      header: () => "ID",
+  const labelNameAdd = (event) => {
+    const value = event.target.getAttribute("data");
+    setLabelNamesSelected(labelNamesSelected.concat([value]));
+  };
+
+  const labelNameRemove = (event) => {
+    const value = event.target.getAttribute("data");
+    setLabelNamesSelected(labelNamesSelected.filter((x) => x !== value));
+  };
+
+  const agentsColumnHelper = createColumnHelper<Agent>();
+
+  const agentsColumns = [
+    agentsColumnHelper.accessor("instance", {
+      header: () => "Instance:",
       cell: (info) => info.getValue(),
-      footer: (info) => info.column.id,
     }),
-    rulesColumnHelper.accessor("Selector", {
-      header: () => "Selector",
+    agentsColumnHelper.accessor("targets", {
+      header: () => "Targets (count)",
       cell: (info) => info.getValue(),
-      footer: (info) => info.column.id,
     }),
-    rulesColumnHelper.accessor("Action", {
-      header: () => "Action",
+    agentsColumnHelper.accessor("last_updated", {
+      header: () => "Last Updated",
       cell: (info) => info.getValue(),
-      footer: (info) => info.column.id,
     }),
   ];
 
-  const targetsTable = useReactTable({
-    targets,
-    targetsColumns,
+  const agentsTable = useReactTable({
+    agents,
+    agentsColumns,
   });
+
+  const [targets, setTargets] = React.useState(() => []);
+
+  const targetsColumnHelper = createColumnHelper<Target>();
 
   React.useEffect(() => {
     if (lastMessage === null) {
@@ -125,12 +150,27 @@ function App() {
         if ("rules" in payload && payload["rules"] !== null) {
           setRules(payload["rules"]);
         }
-        if ("targets" in payload && payload["targets"] !== null) {
-          setTargets(payload["targets"]);
+        if ("agents" in payload && payload["agents"] !== null) {
+          setAgents(
+            payload["agents"].map((a) => {
+              return {
+                instance: a.name,
+                targets: a.targets.length,
+                last_updated: a.last_updated,
+              };
+            }),
+          );
+          let labelNames = new Set<string>();
+          payload["agents"].forEach((a) => {
+            a.targets.forEach((t) => {
+              Object.keys(t).forEach((l) => labelNames.add(l));
+            });
+          });
+          setLabelNames(labelNames);
         }
       }
     }
-  }, [lastMessage, setRules, setTargets]);
+  }, [lastMessage, setRules, setAgents, setTargets]);
 
   const [data, setData] = React.useState(() => makeData(100000));
   const refreshData = () => setData(() => makeData(100000));
@@ -138,7 +178,7 @@ function App() {
   const [grouping, setGrouping] = React.useState<GroupingState>([]);
 
   return (
-    <Accordion defaultActiveKey={["1", "2"]}>
+    <Accordion alwaysOpen defaultActiveKey={["1", "2", "3"]}>
       <Accordion.Item eventKey="0">
         <Accordion.Header>Websocket Status</Accordion.Header>
         <Accordion.Body>
@@ -154,9 +194,39 @@ function App() {
         </Accordion.Body>
       </Accordion.Item>
       <Accordion.Item eventKey="2">
+        <Accordion.Header>Agents</Accordion.Header>
+        <Accordion.Body>
+          <Table columns={agentsColumns} data={agents} />
+        </Accordion.Body>
+      </Accordion.Item>
+      <Accordion.Item eventKey="3">
         <Accordion.Header>Targets</Accordion.Header>
         <Accordion.Body>
-          <Table columns={rulesColumns} data={rules} />
+          <Stack direction="horizontal" gap={2}>
+            <Dropdown>
+              <Dropdown.Toggle variant="success" id="dropdown-basic">
+                Select Label
+              </Dropdown.Toggle>
+
+              <Dropdown.Menu>
+                {[...labelNames]
+                  .sort()
+                  .filter((x) => !labelNamesSelected.includes(x))
+                  .map((x) => (
+                    <Dropdown.Item data={x} onClick={labelNameAdd}>
+                      {x}
+                    </Dropdown.Item>
+                  ))}
+              </Dropdown.Menu>
+            </Dropdown>
+            {labelNamesSelected.map((x) => (
+              <Badge pill data={x} onClick={labelNameRemove} bg="primary">
+                {x}
+              </Badge>
+            ))}
+          </Stack>
+
+          <Table columns={agentsColumns} data={[]} />
         </Accordion.Body>
       </Accordion.Item>
     </Accordion>
