@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -19,9 +20,6 @@ const (
 
 	// Send pings to peer with this period. Must be less than pongWait.
 	pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed from peer.
-	maxMessageSize = 512
 )
 
 var (
@@ -35,6 +33,7 @@ type Client struct {
 	// The websocket connection.
 	conn *websocket.Conn
 
+	isGrafanaAgent   bool
 	subscribedTopics []string
 
 	// Buffered channel of outbound messages.
@@ -48,10 +47,9 @@ type Client struct {
 // reads from this goroutine.
 func (c *Client) readPump() {
 	defer func() {
-		c.hub.unregister <- c
+		c.hub.unregisterCh <- c
 		c.conn.Close()
 	}()
-	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	var (
@@ -60,6 +58,7 @@ func (c *Client) readPump() {
 			Payload json.RawMessage   `json:"payload"`
 		}
 		subscribe model.PayloadSubscribe
+		data      model.PayloadData
 	)
 
 	for {
@@ -79,7 +78,20 @@ func (c *Client) readPump() {
 			}
 			c.subscribedTopics = subscribe.Topics
 			slog.Debug("client subscribing", "topics", subscribe.Topics)
-			c.hub.register <- c
+			c.hub.registerCh <- c
+		case model.MessageTypeData:
+			err := json.Unmarshal(msg.Payload, &data)
+			if err != nil {
+				slog.Error("error unmarshalling data", "error", err)
+				break
+			}
+			for idx := range data.Agents {
+				a := &data.Agents[idx]
+				slog.Debug("received agent targets", "agent", a.Name, "targets", len(a.Targets))
+				c.hub.agentCh <- a
+			}
+		default:
+			slog.Warn("unknown message type", "type", msg.Type)
 		}
 	}
 }
@@ -132,12 +144,17 @@ func (c *Client) writePump() {
 
 // serveWs handles websocket requests from the peer.
 func (a *App) handleWS(w http.ResponseWriter, r *http.Request) {
+
 	conn, err := a.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Warn("error upgrading websocket", "err", err)
 		return
 	}
 	client := &Client{hub: a.hub, conn: conn, send: make(chan []byte, 256)}
+
+	if filepath.Base(r.URL.Path) == "grafana-agent" {
+		client.isGrafanaAgent = true
+	}
 
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.

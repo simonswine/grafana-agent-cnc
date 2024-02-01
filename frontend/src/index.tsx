@@ -7,7 +7,11 @@ import Table from "./table";
 import "./index.css";
 
 import { useReactTable, createColumnHelper } from "@tanstack/react-table";
+import Accordion from "react-bootstrap/Accordion";
+
 import { makeData, Person } from "./makeData";
+
+import "bootstrap/dist/css/bootstrap.min.css";
 
 function App() {
   const [socketUrl, setSocketUrl] = React.useState(WS_URL);
@@ -49,7 +53,7 @@ function App() {
 
   type Rule = {
     ID: number;
-    Selector: string;
+    //    Selector: string;
     Action: string;
   };
 
@@ -134,22 +138,28 @@ function App() {
   const [grouping, setGrouping] = React.useState<GroupingState>([]);
 
   return (
-    <div>
-      <h1>Grafana Agent Command and Control</h1>
-      <div id="status">
-        <h2>Websocket status</h2>
-        <p>The WebSocket is currently {readyState}</p>
-        {lastMessage ? <p>Last message: {lastMessage.data}</p> : null}
-      </div>
-      <div id="rules">
-        <h2>Rules</h2>
-        <Table columns={rulesColumns} data={rules} />
-      </div>
-      <div id="targets">
-        <h2>Targets</h2>
-        <Table columns={targetsColumns} data={targets} />
-      </div>
-    </div>
+    <Accordion defaultActiveKey={["1", "2"]}>
+      <Accordion.Item eventKey="0">
+        <Accordion.Header>Websocket Status</Accordion.Header>
+        <Accordion.Body>
+          <h2>Websocket status</h2>
+          <p>The WebSocket is currently {readyState}</p>
+          {lastMessage ? <p>Last message: {lastMessage.data}</p> : null}
+        </Accordion.Body>
+      </Accordion.Item>
+      <Accordion.Item eventKey="1">
+        <Accordion.Header>Rules</Accordion.Header>
+        <Accordion.Body>
+          <Table columns={rulesColumns} data={rules} />
+        </Accordion.Body>
+      </Accordion.Item>
+      <Accordion.Item eventKey="2">
+        <Accordion.Header>Targets</Accordion.Header>
+        <Accordion.Body>
+          <Table columns={rulesColumns} data={rules} />
+        </Accordion.Body>
+      </Accordion.Item>
+    </Accordion>
   );
 }
 

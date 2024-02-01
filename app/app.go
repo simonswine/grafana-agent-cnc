@@ -85,6 +85,12 @@ func New() *App {
 
 	a.hub = newHub(
 		newTopic("rules", a.getRules),
+		newTopic("agents", func() ([]byte, error) {
+			if a.hub == nil {
+				return []byte{}, nil
+			}
+			return a.hub.getAgents()
+		}),
 	)
 	return a
 }
