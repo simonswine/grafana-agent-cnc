@@ -14,8 +14,8 @@ type Message struct {
 }
 
 type PayloadData struct {
-	Rules  []Rule  `json:"rules"`
-	Agents []Agent `json:"agents"`
+	Rules  []Rule  `json:"rules,omitempty"`
+	Agents []Agent `json:"agents,omitempty"`
 }
 
 type PayloadSubscribe struct {

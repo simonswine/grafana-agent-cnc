@@ -74,6 +74,8 @@ func newHub(topics ...*topic) *Hub {
 	return &Hub{
 		topics:           t,
 		agentsPublishing: make(map[*Client]bool),
+		agents:           make(map[string]*model.Agent),
+		agentCh:          make(chan *model.Agent),
 		registerCh:       make(chan *Client),
 		unregisterCh:     make(chan *Client),
 	}
@@ -133,7 +135,7 @@ func (h *Hub) updateClientToggleAgentSubscription(client *Client) error {
 			return err
 		}
 
-		slog.Debug("request agent publishing", "data", string(data))
+		slog.Debug("request agent publishing", "client", fmt.Sprintf("%p", client), "data", string(data))
 		client.send <- data
 
 		h.agentsPublishing[client] = h.agentsPublishingActive
@@ -165,7 +167,7 @@ func (h *Hub) updateAgents() {
 
 func (h *Hub) getAgents() ([]byte, error) {
 	var (
-		agentNames = make([]string, len(h.agents))
+		agentNames = make([]string, 0, len(h.agents))
 		agents     = make([]*model.Agent, len(h.agents))
 	)
 
