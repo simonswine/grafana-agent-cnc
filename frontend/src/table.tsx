@@ -1,18 +1,44 @@
 import React from "react";
 import {
   getCoreRowModel,
+  getExpandedRowModel,
+  getGroupedRowModel,
+  getPaginationRowModel,
+  getFilteredRowModel,
   useReactTable,
   flexRender,
 } from "@tanstack/react-table";
 
 import { Table as BTable } from "react-bootstrap";
 
-export default function Table({ columns, data }) {
+export default function Table({
+  columns,
+  data,
+  grouping = null,
+  setGrouping = null,
+}) {
+  const rerender = React.useReducer(() => ({}), {})[1];
+
+  const opts =
+    grouping == null && setGrouping == null
+      ? {}
+      : {
+          state: {
+            grouping,
+          },
+          onGroupingChange: setGrouping,
+          getExpandedRowModel: getExpandedRowModel(),
+          getGroupedRowModel: getGroupedRowModel(),
+          //          getPaginationRowModel: getPaginationRowModel(),
+          getFilteredRowModel: getFilteredRowModel(),
+        };
+
   // Use the useTable Hook to send the columns and data to build the table
   const table = useReactTable({
-    columns,
     data,
+    columns,
     getCoreRowModel: getCoreRowModel(),
+    ...opts,
   });
 
   return (
@@ -46,6 +72,9 @@ export default function Table({ columns, data }) {
           ))}
         </tbody>
       </BTable>
+      <div>
+        <button onClick={() => rerender()}>Force Rerender</button>
+      </div>
     </div>
   );
 }

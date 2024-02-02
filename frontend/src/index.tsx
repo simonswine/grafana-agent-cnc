@@ -137,7 +137,49 @@ function App() {
 
   const [targets, setTargets] = React.useState(() => []);
 
-  const targetsColumnHelper = createColumnHelper<Target>();
+  const [targetsColumns, setTargetsColumns] = React.useState(() => []);
+
+  const [targetsGrouping, setTargetsGrouping] = React.useState<GroupingState>(
+    [],
+  );
+
+  React.useEffect(() => {
+    const columnHelper = createColumnHelper<{ [key: string]: string }>();
+
+    setTargetsColumns(
+      labelNamesSelected
+        .map((x) =>
+          columnHelper.accessor(x, {
+            header: x,
+            id: "label." + x,
+          }),
+        )
+        .concat([
+          {
+            accessorKey: "count",
+            header: () => "Count",
+            aggregationFn: "count",
+            //                aggregatedCell: ({ getValue }) => getValue().toLocaleString(),
+          },
+        ]),
+    );
+
+    /*
+      calculate manually
+    let result = {};
+    targets.forEach((t) =>{
+      let o = result;
+      labelNamesSelected.forEach((f) => {
+       if(o[f] === undefined)
+         o[f] = {};
+        o = o[t[f]]
+      });
+      o++;
+    });
+      */
+
+    setTargetsGrouping(labelNamesSelected.map((x) => "label." + x));
+  }, [labelNamesSelected, targets, setTargetsGrouping, setTargetsColumns]);
 
   React.useEffect(() => {
     if (lastMessage === null) {
@@ -161,12 +203,15 @@ function App() {
             }),
           );
           let labelNames = new Set<string>();
+          let targets = [];
           payload["agents"].forEach((a) => {
+            targets = targets.concat(a.targets);
             a.targets.forEach((t) => {
               Object.keys(t).forEach((l) => labelNames.add(l));
             });
           });
           setLabelNames(labelNames);
+          setTargets(targets);
         }
       }
     }
@@ -174,8 +219,6 @@ function App() {
 
   const [data, setData] = React.useState(() => makeData(100000));
   const refreshData = () => setData(() => makeData(100000));
-
-  const [grouping, setGrouping] = React.useState<GroupingState>([]);
 
   return (
     <Accordion alwaysOpen defaultActiveKey={["1", "2", "3"]}>
@@ -225,8 +268,12 @@ function App() {
               </Badge>
             ))}
           </Stack>
-
-          <Table columns={agentsColumns} data={[]} />
+          <Table
+            columns={targetsColumns}
+            data={targets}
+            grouping={targetsGrouping}
+            setGrouing={setTargetsGrouping}
+          />
         </Accordion.Body>
       </Accordion.Item>
     </Accordion>
