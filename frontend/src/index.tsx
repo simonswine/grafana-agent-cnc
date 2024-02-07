@@ -6,22 +6,22 @@ const WS_URL = "ws://127.0.0.1:8333/ws";
 import Table from "./table";
 import "./index.css";
 
-import { useReactTable, createColumnHelper } from "@tanstack/react-table";
+import { createColumnHelper } from "@tanstack/react-table";
 import Accordion from "react-bootstrap/Accordion";
 import Dropdown from "react-bootstrap/Dropdown";
 import Badge from "react-bootstrap/Badge";
 import Stack from "react-bootstrap/Stack";
-
-import { makeData, Person } from "./makeData";
+import Button from "react-bootstrap/Button";
+import { Trash } from "react-bootstrap-icons";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 
 function App() {
-  const [socketUrl, setSocketUrl] = React.useState(WS_URL);
+  const [socketUrl] = React.useState(WS_URL);
   const didUnmount = React.useRef(false);
 
   const { sendMessage, lastMessage, readyState } = useWebSocket(socketUrl, {
-    shouldReconnect: (closeEvent) => {
+    shouldReconnect: () => {
       /*
         useWebSocket will handle unmounting for you, but this is an example of a 
         case in which you would not want it to automatically reconnect
@@ -50,51 +50,63 @@ function App() {
     }
   }, [readyState]);
 
-  const rerender = React.useReducer(() => ({}), {})[1];
+  class Agent {
+    instance: string;
+    targets: number;
+    last_update: Date;
+  }
+
+  class Rule {
+    id: number;
+    selector: Array<Array<string>>;
+    action: string;
+  }
+
+  class Target {
+    label_values: Array<string>;
+    count: number;
+    profiled: number;
+    state: string;
+  }
+
+  const [targets, setTargets] = React.useState(() => []);
+
+  const [targetsColumns, setTargetsColumns] = React.useState(() => []);
+
+  const [targetsGrouped, setTargetsGrouped] = React.useState<Target[]>(
+    () => [],
+  );
 
   const [rules, setRules] = React.useState(() => []);
 
-  type Rule = {
-    ID: number;
-    //    Selector: string;
-    Action: string;
-  };
-
   const rulesColumnHelper = createColumnHelper<Rule>();
-
   const rulesColumns = [
-    rulesColumnHelper.accessor("ID", {
+    rulesColumnHelper.accessor("id", {
       header: () => "ID",
       cell: (info) => info.getValue(),
-      footer: (info) => info.column.id,
     }),
-    rulesColumnHelper.accessor("Selector", {
+    rulesColumnHelper.accessor("selector", {
       header: () => "Selector",
-      cell: (info) => info.getValue(),
-      footer: (info) => info.column.id,
+      cell: (x) =>
+        x
+          .getValue()
+          .map((x) => `${x[0]}${x[1]}"${x[2]}"`)
+          .join(", "),
     }),
-    rulesColumnHelper.accessor("Action", {
+    rulesColumnHelper.accessor("action", {
       header: () => "Action",
       cell: (info) => info.getValue(),
-      footer: (info) => info.column.id,
+    }),
+    rulesColumnHelper.accessor("id", {
+      header: "actions",
+      id: "__actions",
+      cell: (info) => (
+        <Button onClick={() => ruleDelete(info.getValue())} variant="danger">
+          <Trash style={{ pointerEvents: "none" }} />
+        </Button>
+      ),
     }),
   ];
-
-  const rulesTable = useReactTable({
-    rules,
-    rulesColumns,
-  });
-
-  type Agent = {
-    Instance: string;
-    Targets: number;
-    LastUpdate: Date;
-  };
-
-  type Targets = {
-    Instance: string;
-    Filtered: bool;
-  };
 
   const [agents, setAgents] = React.useState(() => []);
 
@@ -111,6 +123,32 @@ function App() {
   const labelNameRemove = (event) => {
     const value = event.target.getAttribute("data");
     setLabelNamesSelected(labelNamesSelected.filter((x) => x !== value));
+  };
+
+  const ruleToggle = (row: Target) => {
+    const selector = labelNamesSelected.reduce(
+      (o, k, idx) => ((o[k] = row.label_values[idx]), o),
+      {},
+    );
+    if (readyState === ReadyState.OPEN) {
+      console.log(
+        JSON.stringify({
+          type: "rule.toggle",
+          selector: JSON.stringify(selector),
+        }),
+      );
+    }
+  };
+
+  const ruleDelete = (id: number) => {
+    if (readyState === ReadyState.OPEN) {
+      console.log(
+        JSON.stringify({
+          type: "rule.delete",
+          payload: { id: id },
+        }),
+      );
+    }
   };
 
   const agentsColumnHelper = createColumnHelper<Agent>();
@@ -130,57 +168,58 @@ function App() {
     }),
   ];
 
-  const agentsTable = useReactTable({
-    agents,
-    agentsColumns,
-  });
-
-  const [targets, setTargets] = React.useState(() => []);
-
-  const [targetsColumns, setTargetsColumns] = React.useState(() => []);
-
-  const [targetsGrouping, setTargetsGrouping] = React.useState<GroupingState>(
-    [],
-  );
-
+  // build grouped targets based on selected labels and all targets from agents
   React.useEffect(() => {
-    const columnHelper = createColumnHelper<{ [key: string]: string }>();
+    const columnHelper = createColumnHelper<Target>();
 
     setTargetsColumns(
       labelNamesSelected
-        .map((x) =>
-          columnHelper.accessor(x, {
+        .map((x, idx) =>
+          columnHelper.accessor((row) => row.label_values[idx], {
             header: x,
-            id: "label." + x,
+            id: "labels." + x,
           }),
         )
         .concat([
+          columnHelper.accessor((row) => row.count, {
+            header: "Target Count",
+            id: "__count",
+          }),
           {
-            accessorKey: "count",
-            header: () => "Count",
-            aggregationFn: "count",
-            //                aggregatedCell: ({ getValue }) => getValue().toLocaleString(),
+            header: "",
+            id: "__actions",
+            cell: (e) => (
+              <Button
+                data-row={e.row.id}
+                onClick={() => ruleToggle(e.row.original)}
+                variant={e.row.original.button}
+              >
+                {e.row.original.profiled} Profiled
+              </Button>
+            ),
           },
         ]),
     );
 
-    /*
-      calculate manually
-    let result = {};
-    targets.forEach((t) =>{
-      let o = result;
-      labelNamesSelected.forEach((f) => {
-       if(o[f] === undefined)
-         o[f] = {};
-        o = o[t[f]]
-      });
-      o++;
-    });
-      */
+    // calculate groupBy manually
+    const result = Object.groupBy(targets, (x) =>
+      labelNamesSelected.map((k) => (x[k] === undefined ? "" : x[k])),
+    );
+    setTargetsGrouped(
+      Object.keys(result).map((x) => {
+        const t = new Target();
+        t.label_values = labelNamesSelected.map((k) =>
+          result[x][0][k] === undefined ? "" : result[x][0][k],
+        );
+        t.count = result[x].length;
+        t.profiled = result[x].length; // TODO: Evaluate
+        t.button = "success";
+        return t;
+      }),
+    );
+  }, [labelNamesSelected, targets]);
 
-    setTargetsGrouping(labelNamesSelected.map((x) => "label." + x));
-  }, [labelNamesSelected, targets, setTargetsGrouping, setTargetsColumns]);
-
+  // handle incoming websocket messages
   React.useEffect(() => {
     if (lastMessage === null) {
       return;
@@ -202,7 +241,7 @@ function App() {
               };
             }),
           );
-          let labelNames = new Set<string>();
+          const labelNames = new Set<string>();
           let targets = [];
           payload["agents"].forEach((a) => {
             targets = targets.concat(a.targets);
@@ -217,9 +256,6 @@ function App() {
     }
   }, [lastMessage, setRules, setAgents, setTargets]);
 
-  const [data, setData] = React.useState(() => makeData(100000));
-  const refreshData = () => setData(() => makeData(100000));
-
   return (
     <Accordion alwaysOpen defaultActiveKey={["1", "2", "3"]}>
       <Accordion.Item eventKey="0">
@@ -228,6 +264,10 @@ function App() {
           <h2>Websocket status</h2>
           <p>The WebSocket is currently {readyState}</p>
           {lastMessage ? <p>Last message: {lastMessage.data}</p> : null}
+          {rules ? <p>Rules: {JSON.stringify(rules)}</p> : null}
+          {targetsGrouped ? (
+            <p>Targets Grouped: {JSON.stringify(targetsGrouped)}</p>
+          ) : null}
         </Accordion.Body>
       </Accordion.Item>
       <Accordion.Item eventKey="1">
@@ -255,25 +295,26 @@ function App() {
                 {[...labelNames]
                   .sort()
                   .filter((x) => !labelNamesSelected.includes(x))
-                  .map((x) => (
-                    <Dropdown.Item data={x} onClick={labelNameAdd}>
+                  .map((x, idx) => (
+                    <Dropdown.Item key={idx} data={x} onClick={labelNameAdd}>
                       {x}
                     </Dropdown.Item>
                   ))}
               </Dropdown.Menu>
             </Dropdown>
-            {labelNamesSelected.map((x) => (
-              <Badge pill data={x} onClick={labelNameRemove} bg="primary">
+            {labelNamesSelected.map((x, idx) => (
+              <Badge
+                pill
+                key={idx}
+                data={x}
+                onClick={labelNameRemove}
+                bg="primary"
+              >
                 {x}
               </Badge>
             ))}
           </Stack>
-          <Table
-            columns={targetsColumns}
-            data={targets}
-            grouping={targetsGrouping}
-            setGrouing={setTargetsGrouping}
-          />
+          <Table columns={targetsColumns} data={targetsGrouped} />
         </Accordion.Body>
       </Accordion.Item>
     </Accordion>
