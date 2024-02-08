@@ -9,8 +9,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/simonswine/grafana-agent-cnc/frontend"
 	"github.com/simonswine/grafana-agent-cnc/model"
-	labels "github.com/simonswine/prometheus-labels"
 )
 
 type App struct {
@@ -103,7 +103,7 @@ func (a *App) Run(ctx context.Context, args ...string) error {
 		a.hub.run()
 	}()
 	port := ":8333"
-	http.HandleFunc("/", a.handleRules)
+	http.Handle("/", frontend.Handler())
 	http.HandleFunc("/ws", a.handleWS)
 	http.HandleFunc("/ws/ui", a.handleWS)
 	http.HandleFunc("/ws/grafana-agent", a.handleWS)
@@ -117,20 +117,7 @@ func New() *App {
 			WriteBufferSize: 1024,
 			CheckOrigin:     func(r *http.Request) bool { return true }, // TODO: check origin
 		},
-		Rules: []model.Rule{
-			{
-				ID: 1234,
-				Selector: model.Selector{
-					labels.MustNewMatcher(labels.MatchEqual, "namespace", "dev"),
-					labels.MustNewMatcher(labels.MatchEqual, "name", "test"),
-				},
-				Action: model.ActionDrop,
-			},
-			{
-				ID:     5678,
-				Action: model.ActionKeep,
-			},
-		},
+		Rules: []model.Rule{},
 	}
 
 	a.hub = newHub(

@@ -1,7 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import useWebSocket, { ReadyState } from "react-use-websocket";
-const WS_URL = "ws://127.0.0.1:8333/ws";
 
 import Table from "./table";
 import "./index.css";
@@ -19,7 +18,11 @@ import { isEqual } from "lodash";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 function App() {
-  const [socketUrl] = React.useState(WS_URL);
+  const [socketUrl] = React.useState(() => {
+    var url = new URL("/ws/ui", window.location.href);
+    url.protocol = url.protocol.replace("http", "ws");
+    return url.href;
+  });
   const didUnmount = React.useRef(false);
 
   const { sendMessage, lastMessage, readyState } = useWebSocket(socketUrl, {
