@@ -31,9 +31,11 @@ type Client struct {
 }
 
 type recvMsg struct {
-	Type      model.MessageType `json:"type"`
-	Data      *model.PayloadData
-	Subscribe *model.PayloadSubscribe
+	Type       model.MessageType `json:"type"`
+	Data       *model.PayloadData
+	Subscribe  *model.PayloadSubscribe
+	RuleDelete *model.PayloadRuleDelete
+	RuleInsert *model.PayloadRuleInsert
 }
 
 func (m *recvMsg) UnmarshalJSON(b []byte) error {
@@ -59,6 +61,18 @@ func (m *recvMsg) UnmarshalJSON(b []byte) error {
 			return err
 		}
 		m.Subscribe = &subscribe
+	case model.MessageTypeRuleInsert:
+		var e model.PayloadRuleInsert
+		if err := json.Unmarshal(header.Payload, &e); err != nil {
+			return err
+		}
+		m.RuleInsert = &e
+	case model.MessageTypeRuleDelete:
+		var e model.PayloadRuleDelete
+		if err := json.Unmarshal(header.Payload, &e); err != nil {
+			return err
+		}
+		m.RuleDelete = &e
 	default:
 		return fmt.Errorf("unknown message type %s", m.Type)
 	}
@@ -99,6 +113,30 @@ func (c *Client) readPump() {
 				slog.Debug("received agent targets", "agent", a.Name, "targets", len(a.Targets))
 				c.hub.agentCh <- &a
 			}
+		case model.MessageTypeRuleDelete:
+			if msg.RuleDelete.ID == nil {
+				slog.Warn("received rule delete without id")
+				continue
+			}
+			if c.isGrafanaAgent {
+				slog.Warn("grafana-agent is not allowed to delete rules")
+				continue
+			}
+			slog.Debug("received rule delete", "id", msg.RuleDelete.ID)
+			id := *msg.RuleDelete.ID
+			c.hub.rulesCh <- func(a *App) {
+				a.deleteRule(id)
+			}
+		case model.MessageTypeRuleInsert:
+			if c.isGrafanaAgent {
+				slog.Warn("grafana-agent is not allowed to insert rules")
+				continue
+			}
+			slog.Debug("received rule insert", "rule", msg.RuleInsert.Rule)
+			c.hub.rulesCh <- func(a *App) {
+				a.insertRule(msg.RuleInsert)
+			}
+
 		default:
 			slog.Warn("unknown message type", "type", msg.Type)
 		}
@@ -127,8 +165,11 @@ func (c *Client) writePump() {
 			if err != nil {
 				return
 			}
-			w.Write(message)
-			c.logger.Debug("sent message to client", "message", string(message))
+			messageLen, _ := w.Write(message)
+			if len(message) > 64 {
+				message = append(message[:64], []byte("...")...)
+			}
+			c.logger.Debug("sent message to client", "size", messageLen, "message", message)
 
 			if err := w.Close(); err != nil {
 				return

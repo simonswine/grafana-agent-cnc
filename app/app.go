@@ -16,8 +16,9 @@ import (
 type App struct {
 	wg sync.WaitGroup
 
-	lck   sync.RWMutex
-	Rules []model.Rule
+	lck        sync.RWMutex
+	Rules      []model.Rule
+	nextRuleID int64
 
 	upgrader websocket.Upgrader
 	hub      *Hub
@@ -35,6 +36,55 @@ func (a *App) handleRules(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(a.Rules); err != nil {
 		a.internalError(nil, "", err)
 		return
+	}
+}
+
+func (a *App) insertRule(data *model.PayloadRuleInsert) {
+	a.lck.Lock()
+	defer a.lck.Unlock()
+
+	if a.nextRuleID == 0 {
+		for _, r := range a.Rules {
+			if r.ID > a.nextRuleID {
+				a.nextRuleID = r.ID
+			}
+		}
+		a.nextRuleID++
+	}
+
+	pos := 0
+	// find position to insert
+	if data.After != nil {
+		after := *data.After
+		for i, r := range a.Rules {
+			if r.ID == after {
+				pos = i + 1
+				break
+			}
+		}
+	}
+
+	// overwrite id
+	rule := data.Rule
+	rule.ID = a.nextRuleID
+	a.nextRuleID++
+
+	// insert rule to correct position
+	a.Rules = append(a.Rules, model.Rule{})
+	copy(a.Rules[pos+1:], a.Rules[pos:])
+	a.Rules[pos] = rule
+
+}
+
+func (a *App) deleteRule(id int64) {
+	a.lck.Lock()
+	defer a.lck.Unlock()
+
+	for i, r := range a.Rules {
+		if r.ID == id {
+			a.Rules = append(a.Rules[:i], a.Rules[i+1:]...)
+			break
+		}
 	}
 }
 
@@ -84,6 +134,7 @@ func New() *App {
 	}
 
 	a.hub = newHub(
+		a,
 		newTopic("rules", a.getRules),
 		newTopic("agents", func() ([]byte, error) {
 			if a.hub == nil {

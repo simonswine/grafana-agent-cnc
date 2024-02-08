@@ -50,6 +50,7 @@ func (t *topic) get() {
 // Hub maintains the set of active clients and broadcasts messages to the
 // clients.
 type Hub struct {
+	app    *App
 	topics map[string]*topic
 
 	agentsPublishing       map[*Client]bool // are particular grafana agents publishing their targets
@@ -64,20 +65,25 @@ type Hub struct {
 
 	// Update agent targets
 	agentCh chan *model.Agent
+
+	// Update rules
+	rulesCh chan func(*App)
 }
 
-func newHub(topics ...*topic) *Hub {
+func newHub(app *App, topics ...*topic) *Hub {
 	t := make(map[string]*topic)
 	for _, topic := range topics {
 		t[topic.name] = topic
 	}
 	return &Hub{
+		app:              app,
 		topics:           t,
 		agentsPublishing: make(map[*Client]bool),
 		agents:           make(map[string]*model.Agent),
 		agentCh:          make(chan *model.Agent),
 		registerCh:       make(chan *Client),
 		unregisterCh:     make(chan *Client),
+		rulesCh:          make(chan func(*App), 32),
 	}
 }
 
@@ -229,6 +235,17 @@ func (h *Hub) run() {
 		case client := <-h.unregisterCh:
 			for _, topic := range h.topics {
 				delete(topic.clients, client)
+			}
+		case f := <-h.rulesCh:
+			f(h.app)
+			t, ok := h.topics["rules"]
+			if !ok {
+				continue
+			}
+			t.get()
+			// update all clients
+			for client := range t.clients {
+				h.updateClient(client)
 			}
 		}
 	}

@@ -131,7 +131,7 @@ func (s *Selector) UnmarshalJSON(b []byte) error {
 }
 
 type Rule struct {
-	ID       int64    `json:"id"`
-	Selector Selector `json:"selector"`
-	Action   Action   `json:"action"`
+	ID       int64    `json:"id" river:",squash"`
+	Selector Selector `json:"selector" river:"selector,attr"`
+	Action   Action   `json:"action" river:"action,attr"`
 }
