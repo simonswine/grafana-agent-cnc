@@ -14,6 +14,8 @@ import Stack from "react-bootstrap/Stack";
 import Button from "react-bootstrap/Button";
 import { Trash } from "react-bootstrap-icons";
 
+import { isEqual } from "lodash";
+
 import "bootstrap/dist/css/bootstrap.min.css";
 
 function App() {
@@ -38,6 +40,21 @@ function App() {
     };
   }, []);
 
+  const keepTarget = (t: Labels) => {
+    for (var i = 0; i < rulesRef.current.length; i++) {
+      var r = rulesRef.current[i];
+      if (r.match(t)) {
+        if (r.action == "keep") {
+          return true;
+        }
+        if (r.action == "drop") {
+          return false;
+        }
+      }
+    }
+    return false;
+  };
+
   React.useEffect(() => {
     console.log("Connection state changed");
     if (readyState === ReadyState.OPEN) {
@@ -50,6 +67,10 @@ function App() {
     }
   }, [readyState]);
 
+  interface Labels {
+    [key: string]: string;
+  }
+
   class Agent {
     instance: string;
     targets: number;
@@ -60,13 +81,49 @@ function App() {
     id: number;
     selector: Array<Array<string>>;
     action: string;
+
+    constructor(o: any) {
+      if (o == null) {
+        return;
+      }
+      this.id = o["id"];
+      this.selector = o["selector"];
+      this.action = o["action"];
+    }
+
+    equal(lbls: Labels): bool {
+      let s = this.selector
+        .filter((o) => o[1] === "=")
+        .reduce((o, k) => ((o[k[0]] = k[2]), o), {});
+      return isEqual(lbls, s);
+    }
+    match(lbls: Labels): bool {
+      for (var i = 0; i < this.selector.length; i++) {
+        let s = this.selector[i];
+        const value = lbls[s[0]] === undefined ? "" : lbls[s[0]];
+        if (s[1] != "=" || s[2] != value) {
+          console.log("false", s, lbls);
+          return false;
+        }
+      }
+      return true;
+    }
   }
 
   class Target {
     label_values: Array<string>;
     count: number;
     profiled: number;
-    state: string;
+
+    buttonVariant(): string {
+      if (this.profiled == 0) {
+        return "danger";
+      }
+      if (this.profiled == this.count) {
+        return "success";
+      }
+      return "warning";
+    }
   }
 
   const [targets, setTargets] = React.useState(() => []);
@@ -77,7 +134,10 @@ function App() {
     () => [],
   );
 
-  const [rules, setRules] = React.useState(() => []);
+  const [rules, setRules] = React.useState<Rule[]>(() => []);
+  // TODO(simonswine) No idea why i need this to read the latest rules
+  const rulesRef = React.useRef();
+  rulesRef.current = rules;
 
   const rulesColumnHelper = createColumnHelper<Rule>();
   const rulesColumns = [
@@ -125,16 +185,32 @@ function App() {
     setLabelNamesSelected(labelNamesSelected.filter((x) => x !== value));
   };
 
-  const ruleToggle = (row: Target) => {
+  let ruleToggle = (row: Target) => {
     const selector = labelNamesSelected.reduce(
       (o, k, idx) => ((o[k] = row.label_values[idx]), o),
       {},
     );
+
+    // delete all exactly matching rules
+    rulesRef.current
+      .filter((r: Rule) => r.equal(selector))
+      .forEach((r: Rule) => {
+        console.log("remove rule", r.id);
+        ruleDelete(r.id);
+      });
+
+    // insert rule at the beginning
+    const r = new Rule();
+    r.selector = Object.keys(selector).map((k) => [k, "=", selector[k]]);
+    r.action = row.profiled < row.count ? "keep" : "drop";
+
     if (readyState === ReadyState.OPEN) {
-      console.log(
+      sendMessage(
         JSON.stringify({
-          type: "rule.toggle",
-          selector: JSON.stringify(selector),
+          type: "rule.insert",
+          payload: {
+            rule: r,
+          },
         }),
       );
     }
@@ -142,7 +218,7 @@ function App() {
 
   const ruleDelete = (id: number) => {
     if (readyState === ReadyState.OPEN) {
-      console.log(
+      sendMessage(
         JSON.stringify({
           type: "rule.delete",
           payload: { id: id },
@@ -192,7 +268,7 @@ function App() {
               <Button
                 data-row={e.row.id}
                 onClick={() => ruleToggle(e.row.original)}
-                variant={e.row.original.button}
+                variant={e.row.original.buttonVariant()}
               >
                 {e.row.original.profiled} Profiled
               </Button>
@@ -207,17 +283,16 @@ function App() {
     );
     setTargetsGrouped(
       Object.keys(result).map((x) => {
-        const t = new Target();
+        let t = new Target();
         t.label_values = labelNamesSelected.map((k) =>
           result[x][0][k] === undefined ? "" : result[x][0][k],
         );
         t.count = result[x].length;
-        t.profiled = result[x].length; // TODO: Evaluate
-        t.button = "success";
+        t.profiled = result[x].filter((t) => keepTarget(t)).length;
         return t;
       }),
     );
-  }, [labelNamesSelected, targets]);
+  }, [labelNamesSelected, targets, rules]);
 
   // handle incoming websocket messages
   React.useEffect(() => {
@@ -229,7 +304,7 @@ function App() {
       if ("payload" in msg && msg["payload"] !== null) {
         const payload = msg["payload"];
         if ("rules" in payload && payload["rules"] !== null) {
-          setRules(payload["rules"]);
+          setRules(payload["rules"].map((r) => new Rule(r)));
         }
         if ("agents" in payload && payload["agents"] !== null) {
           setAgents(
