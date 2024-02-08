@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	labels "github.com/simonswine/prometheus-labels"
 )
@@ -55,6 +56,14 @@ func (a *Action) UnmarshalJSON(b []byte) error {
 }
 
 type Selector labels.Selector
+
+func (s Selector) String() string {
+	out := make([]string, len(s))
+	for idx := range s {
+		out[idx] = s[idx].String()
+	}
+	return "{" + strings.Join(out, ", ") + "}"
+}
 
 type matcher [3]string
 
