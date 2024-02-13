@@ -1,0 +1,4 @@
+/.helm.repo.yaml
+/.helm.repo.lock
+/frontend/dist
+/frontend/src/index.js
