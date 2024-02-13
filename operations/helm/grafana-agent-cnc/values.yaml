@@ -1,0 +1,150 @@
+# Default values for ..
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: simonswine/grafana-agent-cnc
+
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "0.2.0"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Automatically mount a ServiceAccount's API credentials?
+  automount: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 80
+  containerPort: 8333
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+pyroscope:
+  agent:
+    agent:
+      mode: 'flow'
+      configMap:
+        name: pyroscope-agent
+        create: true
+        content: |
+          discovery.kubernetes "local_pods" {
+            selectors {
+              field = "spec.nodeName=" + env("HOSTNAME")
+              role = "pod"
+            }
+            role = "pod"
+          }
+          discovery.process "all" {
+            join = discovery.kubernetes.local_pods.targets
+            refresh_interval = "60s"
+            discover_config {
+              cwd = true
+              exe = true
+              commandline = true
+              username = true
+              uid = true
+              container_id = true
+            }
+          }
+          discovery.relabel "all" {
+              targets = discovery.process.all.targets
+              // get basename into service_name
+              rule {
+                  source_labels = ["__meta_process_exe"]
+                  action = "replace"
+                  regex = ".*/(.*)$"
+                  target_label = "service_name"
+                  replacement = "$1"
+              }
+              rule {
+                  action = "labelmap"
+                  regex  = "__meta_kubernetes_pod_label_(.+)"
+              }
+
+              rule {
+                  action        = "replace"
+                  source_labels = ["__meta_kubernetes_namespace"]
+                  target_label  = "namespace"
+              }
+              rule {
+                  action        = "replace"
+                  source_labels = ["__meta_kubernetes_pod_name"]
+                  target_label  = "pod"
+              }
+              rule {
+                  action        = "replace"
+                  source_labels = ["__meta_kubernetes_pod_container_name"]
+                  target_label  = "container"
+              }
+          }
+          discovery.remote_filter "cnc" {
+            targets = discovery.relabel.all.output
+            websocket_url = "ws://pyroscope-grafana-agent-cnc"
+          }
+          pyroscope.ebpf "instance" {
+            forward_to = [pyroscope.write.endpoint.receiver]
+            targets = discovery.remote_filter.cnc.output
+          }
+          pyroscope.write "endpoint" {
+            endpoint {
+              url = "http://pyroscope:4040"
+            }
+          }
+      securityContext:
+        runAsGroup: 0
+        runAsUser: 0
+        privileged: true
+    controller:
+      type: "daemonset"
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+      hostPID: true
+    image:
+      repository: simonswine/grafana-agent
+      tag: "remote-filter-v3"

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: grafana-agent-cnc
+description: A demo to show how Grafana Agents can be remote controlled
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+- name: pyroscope
+  version: "1.4.0"
+  repository: "https://grafana.github.io/helm-charts"
