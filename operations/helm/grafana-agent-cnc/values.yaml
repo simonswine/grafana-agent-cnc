@@ -120,6 +120,11 @@ pyroscope:
                   source_labels = ["__meta_kubernetes_pod_container_name"]
                   target_label  = "container"
               }
+              rule {
+                  action        = "replace"
+                  source_labels = ["__process_pid__"]
+                  target_label  = "process_pid"
+              }
           }
           discovery.remote_filter "cnc" {
             targets = discovery.relabel.all.output
@@ -130,6 +135,9 @@ pyroscope:
             targets = discovery.remote_filter.cnc.output
           }
           pyroscope.write "endpoint" {
+            external_labels = {
+              node = env("HOSTNAME"),
+            }
             endpoint {
               url = "http://pyroscope:4040"
             }
@@ -147,4 +155,4 @@ pyroscope:
       hostPID: true
     image:
       repository: simonswine/grafana-agent
-      tag: "remote-filter-v3"
+      tag: "remote-filter-v5"
